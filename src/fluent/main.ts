@@ -46,7 +46,7 @@ const createConsumerBuilder = <Queue extends string>(defaults: Omit<Options, "de
   return make({ queue, options: { ...defaults } }) as RawBuilder<Queue>
 }
 
-// Le Record est la source de vérité des noms de queues.
+// The Record is the source of truth for queue names.
 export const Queues = defineQueues({
   usersCreate: "users.create",
   usersCreateFailed: "users.create.failed",
@@ -65,7 +65,7 @@ const createUserSchema: JoiSchema<CreateUser> = { validate: (input) => valid(inp
 const updateUserSchema: JoiSchema<UpdateUser> = { validate: (input) => valid(input as UpdateUser) };
 const deleteUserSchema: JoiSchema<DeleteUser> = { validate: (input) => valid(input as DeleteUser) };
 
-// Les dépendances sont volontairement capturées par closure : elles ne font pas partie du handler.
+// Dependencies are deliberately captured by closure rather than passed to the handler.
 const users = {
   create: async (_message: CreateUser) => undefined,
   update: async (_message: UpdateUser) => undefined,
@@ -79,7 +79,7 @@ const defineConsumer = createConsumerBuilder<QueueName>({
   retry: { maxAttempts: 3, delayMs: 1_000, backoff: "exponential" },
 });
 
-// Module de domaine : les cinq consumers sont regroupés sous usersConsumers.
+// Domain module: the five consumers are grouped under usersConsumers.
 export const usersConsumers = {
   createUserConsumer: defineConsumer(Queues.usersCreate)
     .decode(fromJoi(createUserSchema))

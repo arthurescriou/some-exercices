@@ -2,7 +2,7 @@ type RetryPolicy = { readonly maxAttempts: number; readonly delayMs: number; rea
 type Decoder<T> = (input: unknown) => { readonly ok: true; readonly value: T } | { readonly ok: false; readonly errors: readonly string[] }
 type MessageMetadata = { readonly messageId?: string; readonly attempt: number; readonly headers: Readonly<Record<string, unknown>> }
 
-// Cette version ne possède pas de Record de queues : l'union est l'autorité de typage.
+// This version has no queue Record: the union is the typing authority.
 type QueueName = "users.create" | "users.update" | "users.delete" | "users.archive" | "users.purge";
 type RetrySetting = false | RetryPolicy;
 type Execution = { readonly concurrency: number; readonly timeoutMs: number };
@@ -28,7 +28,7 @@ type Consumer<Q extends QueueName, Message = unknown> = {
   readonly handler?: (context: HandlerContext<Message>) => void | Promise<void>;
 };
 
-// Politique globale : chaque consumer reste explicite et peut la réutiliser ou la remplacer.
+// Global policy: each consumer remains explicit and can reuse or override it.
 const defaultRetry: RetryPolicy = { maxAttempts: 3, delayMs: 1_000, backoff: "exponential" };
 
 const consumer = <Q extends QueueName>(queue: Q): Consumer<Q> => ({ queue });
@@ -45,7 +45,7 @@ const handle = <Message>(handler: (context: HandlerContext<Message>) => void | P
 
 type Step = (value: any) => any;
 
-// Un tableau rend l'enchaînement extensible sans multiplier les surcharges TypeScript.
+// An array keeps the pipeline extensible without multiplying TypeScript overloads.
 const pipe = <Value>(value: Value, steps: readonly Step[]): unknown =>
   steps.reduce((current, step) => step(current), value);
 
@@ -56,7 +56,7 @@ const createUserDecoder: Decoder<CreateUser> = (input) => ({ ok: true, value: in
 const updateUserDecoder: Decoder<UpdateUser> = (input) => ({ ok: true, value: input as UpdateUser });
 const deleteUserDecoder: Decoder<DeleteUser> = (input) => ({ ok: true, value: input as DeleteUser });
 
-// Un handler résout normalement : le runtime acquitte. Une exception déclenche son retry.
+// A handler normally resolves and the runtime acknowledges it. An exception triggers a retry.
 export const usersConsumers = {
   createUserConsumer: pipe(
     consumer("users.create"),

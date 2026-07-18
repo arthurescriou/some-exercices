@@ -1,11 +1,11 @@
-# Deux styles d’API RabbitMQ
+# Two RabbitMQ API styles
 
-Ce dépôt compare uniquement deux déclarations TypeScript autonomes :
+This repository compares two standalone TypeScript declarations:
 
-- `src/fluent/main.ts` : queues dans un `Record`, defaults fusionnés et API fluent immuable.
-- `src/functional/main.ts` : union de chaînes, composition avec `pipe(..., [...])` et configuration déclarative explicite.
+- `src/fluent/main.ts`: queues in a typed `Record`, merged defaults, and an immutable fluent API.
+- `src/functional/main.ts`: a string union, composition with `pipe(..., [...])`, and explicit declarative configuration.
 
-Chaque exemple contient cinq consumers `users` avec des politiques d’exécution distinctes.
+Each example contains five `users` consumers with distinct execution policies.
 
 ```sh
 npm run build
