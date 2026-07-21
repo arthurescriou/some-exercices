@@ -13,37 +13,39 @@ const ack = (): HandlerResult => ({ kind: "ack" })
 const retry = (): HandlerResult => ({ kind: "retry" })
 const deadLetter = (error: unknown): HandlerResult => ({ kind: "dead-letter", error })
 
-interface RawBuilder<Queue extends string> extends BuilderOptions<RawBuilder<Queue>> {
-  decode<Message>(decoder: Decoder<Message>): DecodedBuilder<Queue, Message>
-}
-interface DecodedBuilder<Queue extends string, Message> extends BuilderOptions<DecodedBuilder<Queue, Message>> {
-  handle(handler: (message: Message) => HandlerResult | Promise<HandlerResult>): ReadyBuilder<Queue, Message>
-}
-interface ReadyBuilder<Queue extends string, Message> extends BuilderOptions<ReadyBuilder<Queue, Message>> { build(): Consumer<Queue, Message> }
-interface BuilderOptions<Next> {
-  withConcurrency(value: number): Next
-  withTimeout(value: number): Next
-  withRetry(value: RetryPolicy): Next
-  withoutRetry(): Next
-  withDeadLetterQueue(queue: string): Next
-}
+type Stage = "raw" | "decoded" | "ready"
+type Builder<Queue extends string, Message, CurrentStage extends Stage> = {
+  withConcurrency(value: number): Builder<Queue, Message, CurrentStage>
+  withTimeout(value: number): Builder<Queue, Message, CurrentStage>
+  withRetry(value: RetryPolicy): Builder<Queue, Message, CurrentStage>
+  withoutRetry(): Builder<Queue, Message, CurrentStage>
+  withDeadLetterQueue(queue: string): Builder<Queue, Message, CurrentStage>
+} & (CurrentStage extends "raw"
+  ? { decode<Decoded>(decoder: Decoder<Decoded>): Builder<Queue, Decoded, "decoded"> }
+  : CurrentStage extends "decoded"
+    ? { handle(handler: (message: Message) => HandlerResult | Promise<HandlerResult>): Builder<Queue, Message, "ready"> }
+    : { build(): Consumer<Queue, Message> })
 type Consumer<Queue extends string, Message> = Readonly<{ queue: Queue; decoder: Decoder<Message>; handler: (message: Message) => HandlerResult | Promise<HandlerResult>; options: Options }>
 type State = { readonly queue: string; readonly options: Options; readonly decoder?: Decoder<unknown>; readonly handler?: (message: unknown) => HandlerResult | Promise<HandlerResult> }
 
-const createConsumerBuilder = <Queue extends string>(defaults: Omit<Options, "deadLetterQueue">) => (queue: Queue): RawBuilder<Queue> => {
-  const make = (state: State): object => {
+const createConsumerBuilder = <Queue extends string>(defaults: Omit<Options, "deadLetterQueue">) => (queue: Queue): Builder<Queue, unknown, "raw"> => {
+  const make = <Message, CurrentStage extends Stage>(state: State, stage: CurrentStage): Builder<Queue, Message, CurrentStage> => {
     const options = {
-      withConcurrency: (concurrency: number) => make({ ...state, options: { ...state.options, concurrency } }),
-      withTimeout: (timeoutMs: number) => make({ ...state, options: { ...state.options, timeoutMs } }),
-      withRetry: (retry: RetryPolicy) => make({ ...state, options: { ...state.options, retry } }),
-      withoutRetry: () => make({ ...state, options: { ...state.options, retry: false } }),
-      withDeadLetterQueue: (deadLetterQueue: string) => make({ ...state, options: { ...state.options, deadLetterQueue } }),
+      withConcurrency: (concurrency: number) => make({ ...state, options: { ...state.options, concurrency } }, stage),
+      withTimeout: (timeoutMs: number) => make({ ...state, options: { ...state.options, timeoutMs } }, stage),
+      withRetry: (retry: RetryPolicy) => make({ ...state, options: { ...state.options, retry } }, stage),
+      withoutRetry: () => make({ ...state, options: { ...state.options, retry: false } }, stage),
+      withDeadLetterQueue: (deadLetterQueue: string) => make({ ...state, options: { ...state.options, deadLetterQueue } }, stage),
     }
-    if (!state.decoder) return { ...options, decode: (decoder: Decoder<unknown>) => make({ ...state, decoder }) }
-    if (!state.handler) return { ...options, handle: (handler: (message: unknown) => HandlerResult | Promise<HandlerResult>) => make({ ...state, handler }) }
-    return { ...options, build: () => Object.freeze({ ...state }) }
+    if (stage === "raw") {
+      return { ...options, decode: <Decoded>(decoder: Decoder<Decoded>) => make<Decoded, "decoded">({ ...state, decoder }, "decoded") } as unknown as Builder<Queue, Message, CurrentStage>
+    }
+    if (stage === "decoded") {
+      return { ...options, handle: (handler: (message: Message) => HandlerResult | Promise<HandlerResult>) => make<Message, "ready">({ ...state, handler: handler as (message: unknown) => HandlerResult | Promise<HandlerResult> }, "ready") } as unknown as Builder<Queue, Message, CurrentStage>
+    }
+    return { ...options, build: () => Object.freeze({ ...state }) } as unknown as Builder<Queue, Message, CurrentStage>
   }
-  return make({ queue, options: { ...defaults } }) as RawBuilder<Queue>
+  return make<unknown, "raw">({ queue, options: { ...defaults } }, "raw")
 }
 
 // The Record is the source of truth for queue names.

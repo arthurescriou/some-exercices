@@ -34,12 +34,10 @@ const defaultRetry: RetryPolicy = { maxAttempts: 3, delayMs: 1_000, backoff: "ex
 const consumer = <Q extends QueueName>(queue: Q): Consumer<Q> => ({ queue });
 const validate = <Message>(decoder: Decoder<Message>) => <Q extends QueueName>(value: Consumer<Q>): Consumer<Q, Message> =>
   ({ ...value, decoder });
-const withExecution = (execution: Execution) => <Q extends QueueName, Message>(value: Consumer<Q, Message>): Consumer<Q, Message> =>
-  ({ ...value, execution });
-const withRetry = (retry: RetrySetting) => <Q extends QueueName, Message>(value: Consumer<Q, Message>): Consumer<Q, Message> =>
-  ({ ...value, retry });
-const withDeadLetterQueue = (deadLetterQueue: QueueName) => <Q extends QueueName, Message>(value: Consumer<Q, Message>): Consumer<Q, Message> =>
-  ({ ...value, deadLetterQueue });
+type ConsumerConfiguration = Pick<Consumer<QueueName>, "execution" | "retry" | "deadLetterQueue">
+const configure = (configuration: Partial<ConsumerConfiguration>) =>
+  <Q extends QueueName, Message>(value: Consumer<Q, Message>): Consumer<Q, Message> =>
+    ({ ...value, ...configuration });
 const handle = <Message>(handler: (context: HandlerContext<Message>) => void | Promise<void>) =>
   <Q extends QueueName>(value: Consumer<Q, Message>): Consumer<Q, Message> => ({ ...value, handler });
 
@@ -62,9 +60,11 @@ export const usersConsumers = {
     consumer("users.create"),
     [
       validate(createUserDecoder),
-      withExecution({ concurrency: 5, timeoutMs: 30_000 }),
-      withRetry(defaultRetry),
-      withDeadLetterQueue("users.archive"),
+      configure({
+        execution: { concurrency: 5, timeoutMs: 30_000 },
+        retry: defaultRetry,
+        deadLetterQueue: "users.archive",
+      }),
       handle<CreateUser>(async ({ message, dependencies, metadata }) => {
       await dependencies.users.create(message);
       console.info("created", metadata.messageId);
@@ -75,8 +75,10 @@ export const usersConsumers = {
     consumer("users.update"),
     [
       validate(updateUserDecoder),
-      withExecution({ concurrency: 1, timeoutMs: 5_000 }),
-      withRetry({ maxAttempts: 5, delayMs: 500, backoff: "fixed" }),
+      configure({
+        execution: { concurrency: 1, timeoutMs: 5_000 },
+        retry: { maxAttempts: 5, delayMs: 500, backoff: "fixed" },
+      }),
       handle<UpdateUser>(async ({ message, dependencies }) => { await dependencies.users.update(message); }),
     ],
   ),
@@ -84,8 +86,10 @@ export const usersConsumers = {
     consumer("users.delete"),
     [
       validate(deleteUserDecoder),
-      withExecution({ concurrency: 2, timeoutMs: 10_000 }),
-      withRetry(false),
+      configure({
+        execution: { concurrency: 2, timeoutMs: 10_000 },
+        retry: false,
+      }),
       handle<DeleteUser>(async ({ message, dependencies }) => { await dependencies.users.delete(message); }),
     ],
   ),
@@ -93,8 +97,10 @@ export const usersConsumers = {
     consumer("users.archive"),
     [
       validate(createUserDecoder),
-      withExecution({ concurrency: 1, timeoutMs: 60_000 }),
-      withRetry(defaultRetry),
+      configure({
+        execution: { concurrency: 1, timeoutMs: 60_000 },
+        retry: defaultRetry,
+      }),
       handle<CreateUser>(async ({ metadata }) => { console.info("archived", metadata.messageId); }),
     ],
   ),
@@ -102,8 +108,10 @@ export const usersConsumers = {
     consumer("users.purge"),
     [
       validate(deleteUserDecoder),
-      withExecution({ concurrency: 1, timeoutMs: 2_000 }),
-      withRetry(false),
+      configure({
+        execution: { concurrency: 1, timeoutMs: 2_000 },
+        retry: false,
+      }),
       handle<DeleteUser>(async ({ metadata }) => { console.info("purged", metadata.messageId); }),
     ],
   ),
